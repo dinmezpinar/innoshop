@@ -66,7 +66,25 @@ class OrderReturnController extends BaseController
         $data = $request->all();
         try {
             $data['customer_id'] = current_customer_id();
-            $orderReturn         = OrderReturnRepo::getInstance()->create($data);
+
+            $orderItemID = $data['order_item_id'];
+            $orderItem   = \InnoShop\Common\Models\Order\Item::findOrFail($orderItemID);
+
+            $alreadyReturned = \InnoShop\Common\Models\OrderReturn::query()
+                ->where('order_id', $orderItem->order_id)
+                ->where('product_id', $orderItem->product_id)
+                ->whereIn('status', ['created','pending','returned','refunded'])
+                ->sum('quantity');
+
+            $newReturnQty = (int) ($data['quantity'] ?? $orderItem->quantity);
+
+            if (($alreadyReturned + $newReturnQty) > $orderItem->quantity) {
+                return back()->withInput()->withErrors([
+                    'errors' => 'Bu ürün için toplam iade miktarı sipariş miktarını aşamaz!'
+                ]);
+            }
+
+            $orderReturn = OrderReturnRepo::getInstance()->create($data);
 
             return redirect(account_route('order_returns.index'))
                 ->with('instance', $orderReturn);
